@@ -258,6 +258,9 @@ class ET(Inverter):
         Integer("battery_bms_strings", 37084, "Battery BMS Strings", "", Kind.BAT),
         # 37085 reserved
         CurrentS("battery_bms_current", 37086, "Battery BMS Current", Kind.BAT),
+        # BMS-reported power limits (read-only, fluctuate with battery state)
+        Integer("battery_charge_power_limit", 37091, "Battery Charge Power Limit", "W", Kind.BAT),
+        Integer("battery_discharge_power_limit", 37093, "Battery Discharge Power Limit", "W", Kind.BAT),
     )
 
     # Modbus registers from offset 0x9858 (39000)
@@ -525,6 +528,16 @@ class ET(Inverter):
         Apparent4("apparent_power3", 35363, "Apparent Power L3", Kind.GRID),
     )
 
+    # Modbus registers from offset 0x89B1 (35249), count 0x1D (29)
+    # Grid monitoring and inverter chamber temperature
+    __all_sensors_grid_monitoring: tuple[Sensor, ...] = (
+        Temp("temperature_chamber", 35249, "Inverter Temperature (Chamber)", Kind.AC),
+        Frequency("grid_frequency_precise", 35268, "Grid Frequency (precise)", Kind.GRID),
+        Frequency("grid_frequency_nominal", 35269, "Grid Frequency (nominal)", Kind.GRID),
+        Voltage("grid_voltage_max", 35270, "Grid Voltage (max)", Kind.GRID),
+        Voltage("grid_voltage_min", 35271, "Grid Voltage (min)", Kind.GRID),
+    )
+
     # Modbus registers of inverter settings, offsets are modbus register addresses
     __all_settings: tuple[Sensor, ...] = (
         Integer("comm_address", 45127, "Communication Address", ""),
@@ -728,6 +741,7 @@ class ET(Inverter):
         self._READ_BATTERY2_INFO: ProtocolCommand = self._read_command(0x9858, 0x0016)
         self._READ_BATTERY2_INFO_EXTENDED = self._read_command(0x89BE, 0x06)
         self._READ_MPPT_DATA: ProtocolCommand = self._read_command(0x89E5, 0x3D)
+        self._READ_GRID_MONITORING: ProtocolCommand = self._read_command(0x89B1, 0x1D)
         self._has_eco_mode_v2: bool = True
         self._has_peak_shaving: bool = True
         self._has_battery: bool = True
@@ -735,6 +749,7 @@ class ET(Inverter):
         self._has_meter_extended: bool = False
         self._has_meter_extended2: bool = False
         self._has_mppt: bool = False
+        self._has_grid_monitoring: bool = False
         self._sensors = self.__all_sensors
         self._sensors_battery = self.__all_sensors_battery
         self._sensors_battery_extended = self.__all_sensors_battery_extended
@@ -743,6 +758,7 @@ class ET(Inverter):
         self._sensors_battery2_extended = self.__all_sensors_battery2_extended
         self._sensors_meter = self.__all_sensors_meter
         self._sensors_mppt = self.__all_sensors_mppt
+        self._sensors_grid_monitoring = self.__all_sensors_grid_monitoring
         self._settings: dict[str, Sensor] = {s.id_: s for s in self.__all_settings}
         self._sensors_map: dict[str, Sensor] | None = None
 
@@ -797,6 +813,7 @@ class ET(Inverter):
 
         if is_745_platform(self) or self.rated_power >= 15000:
             self._has_mppt = True
+            self._has_grid_monitoring = True
             self._has_meter_extended = True
             self._has_meter_extended2 = True
         else:
@@ -947,6 +964,19 @@ class ET(Inverter):
                         "MPPT values not supported, disabling further attempts."
                     )
                     self._has_mppt = False
+                else:
+                    raise ex
+
+        if self._has_grid_monitoring:
+            try:
+                response = await self._read_from_socket(self._READ_GRID_MONITORING)
+                data.update(self._map_response(response, self._sensors_grid_monitoring))
+            except RequestRejectedException as ex:
+                if ex.message == ILLEGAL_DATA_ADDRESS:
+                    logger.info(
+                        "Grid monitoring values not supported, disabling further attempts."
+                    )
+                    self._has_grid_monitoring = False
                 else:
                     raise ex
 
@@ -1161,6 +1191,8 @@ class ET(Inverter):
             result.update({s.id_: s for s in self._sensors_battery2_extended})
         if self._has_mppt:
             result.update({s.id_: s for s in self._sensors_mppt})
+        if self._has_grid_monitoring:
+            result.update({s.id_: s for s in self._sensors_grid_monitoring})
         return result.values()
 
     def settings(self) -> tuple[Sensor, ...]:
