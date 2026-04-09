@@ -248,7 +248,7 @@ class ET(Inverter):
         Energy4("battery_total_charge", 37056, "Total Battery 1 Charge", Kind.BAT),
         Energy4("battery_total_discharge", 37058, "Total Battery 1 Discharge", Kind.BAT),
         Text("battery_sn", 37060, "Battery S/N", 32, Kind.BAT),
-        Integer("battery_capacity_total", 37076, "Battery Total Capacity", "", Kind.BAT),
+        # 37076: value 6000, meaning unknown - removed until understood
         Integer("battery_physical_modules", 37077, "Battery Physical Modules", "", Kind.BAT),
         Integer("battery_config", 37078, "Battery Configuration", "", Kind.BAT),
         # 37079 reserved
