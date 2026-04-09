@@ -818,6 +818,20 @@ class PeakShavingMode(Schedule):
         super().__init__(id_, offset, name, ScheduleType.PEAK_SHAVING)
 
 
+class Text(Sensor):
+    """Sensor representing ASCII string value encoded in multiple bytes"""
+
+    def __init__(self, id_: str, offset: int, name: str, length: int, kind: Optional[SensorKind] = None):
+        super().__init__(id_, offset, name, length, "", kind)
+
+    def read_value(self, data: ProtocolResponse):
+        raw = data.read(self.size_)
+        try:
+            return raw.decode("ascii").rstrip()
+        except (UnicodeDecodeError, ValueError):
+            return raw.hex()
+
+
 class Calculated(Sensor):
     """Sensor representing calculated value"""
 
